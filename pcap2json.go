@@ -9,8 +9,10 @@ import (
 	"github.com/akrennmair/gopcap"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -20,6 +22,11 @@ var (
 	device int
 	filter string
 )
+
+func init() {
+	flag.IntVar(&device, "device", 0, "device/interface to use for sniffing data")
+	flag.StringVar(&filter, "filter", "not port 22", "filter expression for source and destination addresses, and Ethernet-like packet types")
+}
 
 // structure of JSON-serialised packets
 type RequestPacket struct {
@@ -109,9 +116,14 @@ func SerialisePacket(pkt *pcap.Packet, enc *json.Encoder) {
 // Open a capture session, attempt to parse any requests to port 80 and
 // serialise to stdout as JSON.
 func main() {
-	flag.IntVar(&device, "device", 0, "device/interface to use for sniffing data")
-	flag.StringVar(&filter, "filter", "not port 22", "filter expression for source and destination addresses, and Ethernet-like packet types")
+	signalChannel := make(chan os.Signal, 2)
+	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		_ = <-signalChannel
+		os.Exit(0)
+	}()
 
+	flag.Parse()
 	// For better sniffing performance we can utilize the machine cores
 	goMaxProcs := os.Getenv("GOMAXPROCS")
 	if goMaxProcs == "" {
